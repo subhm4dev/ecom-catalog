@@ -36,7 +36,7 @@ import java.util.UUID;
  * (tenants) manage their own product catalogs.
  */
 @RestController
-@RequestMapping("/v1/product")
+@RequestMapping("/api/v1/product")
 @Tag(name = "Product Catalog", description = "Product management and catalog endpoints")
 @SecurityRequirement(name = "bearerAuth")
 public class ProductController {

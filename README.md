@@ -8,8 +8,8 @@ Product Catalog Management Service with Categories, Products, and Variants.
 
 ## Endpoints
 
-- `POST /v1/product` - Create product
-- `GET /v1/product/{id}` - Get product by ID
+- `POST /api/v1/product` - Create product
+- `GET /api/v1/product/{id}` - Get product by ID
 
 ## Events
 
