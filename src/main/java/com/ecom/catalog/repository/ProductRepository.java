@@ -98,5 +98,14 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
         UUID tenantId,
         Pageable pageable
     );
+    
+    /**
+     * Count products by category (for validation before category deletion)
+     * 
+     * @param tenantId Tenant ID
+     * @param categoryId Category ID
+     * @return Count of active products in this category
+     */
+    long countByTenantIdAndCategoryIdAndDeletedFalse(UUID tenantId, UUID categoryId);
 }
 

@@ -38,5 +38,14 @@ public interface CategoryRepository extends JpaRepository<Category, UUID> {
      * @return Optional Category
      */
     java.util.Optional<Category> findByNameAndTenantId(String name, UUID tenantId);
+    
+    /**
+     * Find category by ID and tenant ID
+     * 
+     * @param id Category ID
+     * @param tenantId Tenant ID
+     * @return Optional Category
+     */
+    java.util.Optional<Category> findByIdAndTenantId(UUID id, UUID tenantId);
 }
 
