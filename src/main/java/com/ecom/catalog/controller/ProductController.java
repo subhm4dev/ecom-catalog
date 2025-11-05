@@ -1,13 +1,26 @@
 package com.ecom.catalog.controller;
 
+import com.ecom.catalog.model.request.ProductRequest;
+import com.ecom.catalog.model.response.ProductResponse;
+import com.ecom.catalog.model.response.ProductSearchResponse;
+import com.ecom.catalog.security.JwtAuthenticationToken;
+import com.ecom.catalog.service.ProductService;
+import com.ecom.error.exception.BusinessException;
+import com.ecom.error.model.ErrorCode;
+import com.ecom.response.dto.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
+import java.math.BigDecimal;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -34,12 +47,19 @@ import java.util.UUID;
  * 
  * <p>Products are tenant-scoped, enabling marketplace scenarios where different sellers
  * (tenants) manage their own product catalogs.
+ * 
+ * <p><b>Security:</b> JWT tokens are validated by JwtAuthenticationFilter.
+ * User context comes from validated JWT claims (source of truth).
+ * Gateway headers (X-User-Id, X-Roles) are hints only, not trusted for security.
  */
 @RestController
 @RequestMapping("/api/v1/product")
 @Tag(name = "Product Catalog", description = "Product management and catalog endpoints")
-@SecurityRequirement(name = "bearerAuth")
+@RequiredArgsConstructor
+@Slf4j
 public class ProductController {
+
+    private final ProductService productService;
 
     /**
      * Create a new product
@@ -66,19 +86,26 @@ public class ProductController {
         description = "Creates a new product listing. Triggers ProductCreated event to Kafka for inventory initialization."
     )
     @SecurityRequirement(name = "bearerAuth")
-    public ResponseEntity<Object> createProduct(@Valid @RequestBody Object productRequest) {
-        // TODO: Implement product creation logic
-        // 1. Extract userId from X-User-Id header
-        // 2. Extract tenantId from X-Tenant-Id header
-        // 3. Verify user has SELLER or ADMIN role (from X-Roles header)
-        // 4. Validate productRequest DTO (name, SKU, price, currency, description, images)
-        // 5. Check SKU uniqueness within tenant
-        // 6. Create Product entity (and Variant entities if variants provided)
-        // 7. Persist to database
-        // 8. Publish ProductCreated event to Kafka
-        // 9. Return product response with productId (201 Created)
-        // 10. Handle BusinessException for SKU_REQUIRED, SKU_DUPLICATE, INVALID_CATEGORY
-        return ResponseEntity.status(HttpStatus.CREATED).body(null);
+    public ApiResponse<ProductResponse> createProduct(
+            @Valid @RequestBody ProductRequest productRequest,
+            Authentication authentication) {
+        
+        // Extract user context from validated JWT (source of truth)
+        UUID currentUserId = getUserIdFromAuthentication(authentication);
+        UUID tenantId = getTenantIdFromAuthentication(authentication);
+        List<String> roles = getRolesFromAuthentication(authentication);
+        
+        log.info("Creating product for seller: {}, tenant: {}", currentUserId, tenantId);
+        
+        ProductResponse response = productService.createProduct(
+            currentUserId,
+            tenantId,
+            currentUserId,
+            roles,
+            productRequest
+        );
+        
+        return ApiResponse.success(response, "Product created successfully");
     }
 
     /**
@@ -88,25 +115,35 @@ public class ProductController {
      * Used by frontend to display product detail pages, and by other services (checkout,
      * cart) to fetch product information.
      * 
-     * <p>This endpoint may be public (for customer browsing) or protected (for sellers
-     * viewing their own products). Business logic determines access control.
-     * 
-     * <p>This endpoint may or may not require authentication depending on requirements.
+     * <p>This endpoint is public (for customer browsing). Authentication is optional
+     * but tenant context is required for multi-tenant filtering.
      */
     @GetMapping("/{productId}")
     @Operation(
         summary = "Get product by ID",
         description = "Retrieves detailed product information including variants, pricing, and images"
     )
-    public ResponseEntity<Object> getProduct(@PathVariable UUID productId) {
-        // TODO: Implement product retrieval logic
-        // 1. Extract tenantId from X-Tenant-Id header (if available)
-        // 2. Find Product entity by productId
-        // 3. Load associated Variant entities
-        // 4. Optionally: Apply promotion pricing if Promotion service integrated
-        // 5. Return product response with all details
-        // 6. Handle 404 if product not found
-        return ResponseEntity.ok(null);
+    public ApiResponse<ProductResponse> getProduct(
+            @PathVariable UUID productId,
+            Authentication authentication) {
+        
+        // Extract tenant ID from JWT if authenticated, otherwise null (public endpoint)
+        UUID tenantId = authentication != null ? getTenantIdFromAuthentication(authentication) : null;
+        
+        // For public access without authentication, tenantId should be provided via query param or header
+        // For now, we'll require tenantId - can be enhanced later
+        if (tenantId == null) {
+            throw new BusinessException(
+                ErrorCode.UNAUTHORIZED,
+                "Tenant ID is required"
+            );
+        }
+        
+        log.info("Getting product {} for tenant: {}", productId, tenantId);
+        
+        ProductResponse response = productService.getProductById(productId, tenantId);
+        
+        return ApiResponse.success(response, "Product retrieved successfully");
     }
 
     /**
@@ -119,31 +156,52 @@ public class ProductController {
      * <p>Returns paginated results for performance. Can integrate with dedicated Search
      * service for advanced full-text search capabilities.
      * 
-     * <p>This endpoint may be public (for customer browsing) or require authentication.
+     * <p>This endpoint is public (for customer browsing). Authentication is optional
+     * but tenant context is required for multi-tenant filtering.
      */
     @GetMapping("/search")
     @Operation(
         summary = "Search products with filters",
         description = "Searches products by category, price range, availability, and search terms. Returns paginated results."
     )
-    public ResponseEntity<Object> searchProducts(
+    public ApiResponse<ProductSearchResponse> searchProducts(
             @RequestParam(required = false) String query,
             @RequestParam(required = false) UUID categoryId,
             @RequestParam(required = false) Double minPrice,
             @RequestParam(required = false) Double maxPrice,
-            @RequestParam(required = false) Boolean inStock,
+            @RequestParam(required = false) Boolean inStock, // Not implemented yet - would require inventory service integration
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size) {
-        // TODO: Implement product search logic
-        // 1. Extract tenantId from X-Tenant-Id header (for multi-tenant filtering)
-        // 2. Build query criteria based on filters
-        // 3. Query Product repository with pagination
-        // 4. Apply category filter if provided
-        // 5. Apply price range filter if provided
-        // 6. Apply availability filter (check inventory) if provided
-        // 7. Apply text search on name/description if query provided
-        // 8. Return paginated product list
-        return ResponseEntity.ok(null);
+            @RequestParam(defaultValue = "20") int size,
+            Authentication authentication) {
+        
+        // Extract tenant ID from JWT if authenticated
+        UUID tenantId = authentication != null ? getTenantIdFromAuthentication(authentication) : null;
+        
+        // For public access without authentication, tenantId should be provided via query param or header
+        // For now, we'll require tenantId - can be enhanced later
+        if (tenantId == null) {
+            throw new BusinessException(
+                ErrorCode.UNAUTHORIZED,
+                "Tenant ID is required"
+            );
+        }
+        
+        log.info("Searching products for tenant: {}, query: {}, page: {}, size: {}", tenantId, query, page, size);
+        
+        BigDecimal minPriceDecimal = minPrice != null ? BigDecimal.valueOf(minPrice) : null;
+        BigDecimal maxPriceDecimal = maxPrice != null ? BigDecimal.valueOf(maxPrice) : null;
+        
+        ProductSearchResponse response = productService.searchProducts(
+            tenantId,
+            query,
+            categoryId,
+            minPriceDecimal,
+            maxPriceDecimal,
+            page,
+            size
+        );
+        
+        return ApiResponse.success(response, "Products retrieved successfully");
     }
 
     /**
@@ -162,21 +220,27 @@ public class ProductController {
         description = "Updates product information. Only product owner or admin can modify products."
     )
     @SecurityRequirement(name = "bearerAuth")
-    public ResponseEntity<Object> updateProduct(
+    public ApiResponse<ProductResponse> updateProduct(
             @PathVariable UUID productId,
-            @Valid @RequestBody Object productRequest) {
-        // TODO: Implement product update logic
-        // 1. Extract userId from X-User-Id header
-        // 2. Extract tenantId from X-Tenant-Id header
-        // 3. Find Product entity by productId
-        // 4. Verify ownership or admin role
-        // 5. Validate productRequest DTO
-        // 6. Update product fields
-        // 7. Persist changes
-        // 8. Optionally: Publish ProductUpdated event to Kafka
-        // 9. Return updated product response
-        // 10. Handle 404 if not found, 403 if unauthorized
-        return ResponseEntity.ok(null);
+            @Valid @RequestBody ProductRequest productRequest,
+            Authentication authentication) {
+        
+        // Extract user context from validated JWT (source of truth)
+        UUID currentUserId = getUserIdFromAuthentication(authentication);
+        UUID tenantId = getTenantIdFromAuthentication(authentication);
+        List<String> roles = getRolesFromAuthentication(authentication);
+        
+        log.info("Updating product {} for user: {}, tenant: {}", productId, currentUserId, tenantId);
+        
+        ProductResponse response = productService.updateProduct(
+            productId,
+            currentUserId,
+            tenantId,
+            roles,
+            productRequest
+        );
+        
+        return ApiResponse.success(response, "Product updated successfully");
     }
 
     /**
@@ -195,16 +259,90 @@ public class ProductController {
         description = "Removes a product from catalog. Soft delete recommended to maintain order history."
     )
     @SecurityRequirement(name = "bearerAuth")
-    public ResponseEntity<Void> deleteProduct(@PathVariable UUID productId) {
-        // TODO: Implement product deletion logic
-        // 1. Extract userId from X-User-Id header
-        // 2. Find Product entity by productId
-        // 3. Verify ownership or admin role
-        // 4. Soft delete (set deleted flag) or hard delete
-        // 5. Optionally: Publish ProductDeleted event to Kafka
-        // 6. Return 204 No Content on success
-        // 7. Handle 404 if not found, 403 if unauthorized
+    public ResponseEntity<Void> deleteProduct(
+            @PathVariable UUID productId,
+            Authentication authentication) {
+        
+        // Extract user context from validated JWT (source of truth)
+        UUID currentUserId = getUserIdFromAuthentication(authentication);
+        UUID tenantId = getTenantIdFromAuthentication(authentication);
+        List<String> roles = getRolesFromAuthentication(authentication);
+        
+        log.info("Deleting product {} for user: {}, tenant: {}", productId, currentUserId, tenantId);
+        
+        productService.deleteProduct(
+            productId,
+            currentUserId,
+            tenantId,
+            roles
+        );
+        
         return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
+    }
+
+    /**
+     * Extract user ID from Spring Security Authentication
+     * 
+     * <p>The Authentication object is populated by JwtAuthenticationFilter
+     * from validated JWT claims (source of truth).
+     */
+    private UUID getUserIdFromAuthentication(Authentication authentication) {
+        if (authentication == null || !(authentication instanceof JwtAuthenticationToken)) {
+            throw new BusinessException(
+                ErrorCode.UNAUTHORIZED,
+                "User ID is required. Please ensure you are authenticated."
+            );
+        }
+
+        JwtAuthenticationToken jwtAuth = (JwtAuthenticationToken) authentication;
+        String userIdStr = jwtAuth.getUserId();
+        
+        try {
+            return UUID.fromString(userIdStr);
+        } catch (IllegalArgumentException e) {
+            log.error("Invalid user ID format in JWT: {}", userIdStr);
+            throw new BusinessException(
+                ErrorCode.UNAUTHORIZED,
+                "Invalid user ID format"
+            );
+        }
+    }
+
+    /**
+     * Extract tenant ID from Spring Security Authentication
+     */
+    private UUID getTenantIdFromAuthentication(Authentication authentication) {
+        if (authentication == null || !(authentication instanceof JwtAuthenticationToken)) {
+            throw new BusinessException(
+                ErrorCode.UNAUTHORIZED,
+                "Tenant ID is required. Please ensure you are authenticated."
+            );
+        }
+
+        JwtAuthenticationToken jwtAuth = (JwtAuthenticationToken) authentication;
+        String tenantIdStr = jwtAuth.getTenantId();
+        
+        try {
+            return UUID.fromString(tenantIdStr);
+        } catch (IllegalArgumentException e) {
+            log.error("Invalid tenant ID format in JWT: {}", tenantIdStr);
+            throw new BusinessException(
+                ErrorCode.UNAUTHORIZED,
+                "Invalid tenant ID format"
+            );
+        }
+    }
+
+    /**
+     * Extract roles from Spring Security Authentication
+     */
+    private List<String> getRolesFromAuthentication(Authentication authentication) {
+        if (authentication == null || !(authentication instanceof JwtAuthenticationToken)) {
+            return List.of();
+        }
+
+        JwtAuthenticationToken jwtAuth = (JwtAuthenticationToken) authentication;
+        return jwtAuth.getRoles();
     }
 }
 
