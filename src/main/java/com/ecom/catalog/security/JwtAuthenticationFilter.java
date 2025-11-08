@@ -105,10 +105,41 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     @Override
     protected boolean shouldNotFilter(@NonNull HttpServletRequest request) {
         // Skip JWT validation for public endpoints
+        // Only 3 catalog endpoints are public (GET only):
+        // 1. GET /api/v1/category - Get all categories
+        // 2. GET /api/v1/product/search - Search/get all products
+        // 3. GET /api/v1/product/{id} - Get product by ID
+        String method = request.getMethod();
         String path = request.getRequestURI();
-        return path.startsWith("/actuator") ||
-               path.startsWith("/swagger-ui") ||
-               path.startsWith("/v3/api-docs");
+        
+        // Skip for actuator, swagger, and API docs
+        if (path.startsWith("/actuator") ||
+            path.startsWith("/swagger-ui") ||
+            path.startsWith("/v3/api-docs")) {
+            return true;
+        }
+        
+        // Only allow GET requests for public catalog endpoints
+        if (!"GET".equals(method)) {
+            return false;
+        }
+        
+        // Exact match for GET /api/v1/category (no query params in path, but that's OK)
+        if (path.equals("/api/v1/category")) {
+            return true;
+        }
+        
+        // Exact match for GET /api/v1/product/search
+        if (path.equals("/api/v1/product/search")) {
+            return true;
+        }
+        
+        // Match GET /api/v1/product/{id} where {id} is a UUID (no additional path segments)
+        if (path.startsWith("/api/v1/product/") && path.matches("/api/v1/product/[^/]+$")) {
+            return true;
+        }
+        
+        return false;
     }
 }
 

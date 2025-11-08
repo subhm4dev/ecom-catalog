@@ -78,11 +78,22 @@ public class CategoryController {
     )
     public ApiResponse<CategoryResponse> getCategory(
             @PathVariable UUID categoryId,
+            @RequestParam(required = false) UUID tenantId, // Optional tenant ID for public access
             Authentication authentication) {
         
-        UUID tenantId = authentication != null ? getTenantIdFromAuthentication(authentication) : null;
+        // Extract tenant ID: priority: query param > JWT > default
+        if (tenantId == null && authentication != null) {
+            tenantId = getTenantIdFromAuthentication(authentication);
+        }
+        
         if (tenantId == null) {
-            throw new BusinessException(ErrorCode.UNAUTHORIZED, "Tenant ID is required");
+            tenantId = getDefaultTenantId();
+            if (tenantId == null) {
+                throw new BusinessException(
+                    ErrorCode.BAD_REQUEST,
+                    "Tenant ID is required. Please provide 'tenantId' as a query parameter or authenticate."
+                );
+            }
         }
         
         log.info("Getting category {} for tenant: {}", categoryId, tenantId);
@@ -101,11 +112,22 @@ public class CategoryController {
         description = "Returns a flat list of all categories for the tenant"
     )
     public ApiResponse<List<CategoryResponse>> getAllCategories(
+            @RequestParam(required = false) UUID tenantId, // Optional tenant ID for public access
             Authentication authentication) {
         
-        UUID tenantId = authentication != null ? getTenantIdFromAuthentication(authentication) : null;
+        // Extract tenant ID: priority: query param > JWT > default
+        if (tenantId == null && authentication != null) {
+            tenantId = getTenantIdFromAuthentication(authentication);
+        }
+        
         if (tenantId == null) {
-            throw new BusinessException(ErrorCode.UNAUTHORIZED, "Tenant ID is required");
+            tenantId = getDefaultTenantId();
+            if (tenantId == null) {
+                throw new BusinessException(
+                    ErrorCode.BAD_REQUEST,
+                    "Tenant ID is required. Please provide 'tenantId' as a query parameter or authenticate."
+                );
+            }
         }
         
         log.info("Getting all categories for tenant: {}", tenantId);
@@ -124,11 +146,22 @@ public class CategoryController {
         description = "Returns hierarchical category structure with nested children"
     )
     public ApiResponse<List<CategoryTreeResponse>> getCategoryTree(
+            @RequestParam(required = false) UUID tenantId, // Optional tenant ID for public access
             Authentication authentication) {
         
-        UUID tenantId = authentication != null ? getTenantIdFromAuthentication(authentication) : null;
+        // Extract tenant ID: priority: query param > JWT > default
+        if (tenantId == null && authentication != null) {
+            tenantId = getTenantIdFromAuthentication(authentication);
+        }
+        
         if (tenantId == null) {
-            throw new BusinessException(ErrorCode.UNAUTHORIZED, "Tenant ID is required");
+            tenantId = getDefaultTenantId();
+            if (tenantId == null) {
+                throw new BusinessException(
+                    ErrorCode.BAD_REQUEST,
+                    "Tenant ID is required. Please provide 'tenantId' as a query parameter or authenticate."
+                );
+            }
         }
         
         log.info("Getting category tree for tenant: {}", tenantId);
@@ -148,11 +181,22 @@ public class CategoryController {
     )
     public ApiResponse<List<CategoryResponse>> getChildCategories(
             @PathVariable UUID parentId,
+            @RequestParam(required = false) UUID tenantId, // Optional tenant ID for public access
             Authentication authentication) {
         
-        UUID tenantId = authentication != null ? getTenantIdFromAuthentication(authentication) : null;
+        // Extract tenant ID: priority: query param > JWT > default
+        if (tenantId == null && authentication != null) {
+            tenantId = getTenantIdFromAuthentication(authentication);
+        }
+        
         if (tenantId == null) {
-            throw new BusinessException(ErrorCode.UNAUTHORIZED, "Tenant ID is required");
+            tenantId = getDefaultTenantId();
+            if (tenantId == null) {
+                throw new BusinessException(
+                    ErrorCode.BAD_REQUEST,
+                    "Tenant ID is required. Please provide 'tenantId' as a query parameter or authenticate."
+                );
+            }
         }
         
         log.info("Getting children of category {} for tenant: {}", parentId, tenantId);
@@ -278,6 +322,18 @@ public class CategoryController {
 
         JwtAuthenticationToken jwtAuth = (JwtAuthenticationToken) authentication;
         return jwtAuth.getRoles();
+    }
+
+    /**
+     * Get default tenant ID for public browsing
+     * 
+     * <p>For public access without authentication, we use the default marketplace tenant.
+     * This is the same tenant ID used for customers in the Identity service.
+     */
+    private UUID getDefaultTenantId() {
+        // Default marketplace tenant ID (same as in Identity service)
+        // This is the tenant where all customers belong by default
+        return UUID.fromString("00000000-0000-0000-0000-000000000000");
     }
 }
 

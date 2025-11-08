@@ -125,18 +125,23 @@ public class ProductController {
     )
     public ApiResponse<ProductResponse> getProduct(
             @PathVariable UUID productId,
+            @RequestParam(required = false) UUID tenantId, // Optional tenant ID for public access
             Authentication authentication) {
         
-        // Extract tenant ID from JWT if authenticated, otherwise null (public endpoint)
-        UUID tenantId = authentication != null ? getTenantIdFromAuthentication(authentication) : null;
+        // Extract tenant ID: priority: query param > JWT > default
+        if (tenantId == null && authentication != null) {
+            tenantId = getTenantIdFromAuthentication(authentication);
+        }
         
-        // For public access without authentication, tenantId should be provided via query param or header
-        // For now, we'll require tenantId - can be enhanced later
+        // For public access without authentication, use default tenant if configured
         if (tenantId == null) {
-            throw new BusinessException(
-                ErrorCode.UNAUTHORIZED,
-                "Tenant ID is required"
-            );
+            tenantId = getDefaultTenantId();
+            if (tenantId == null) {
+                throw new BusinessException(
+                    ErrorCode.BAD_REQUEST,
+                    "Tenant ID is required. Please provide 'tenantId' as a query parameter or authenticate."
+                );
+            }
         }
         
         log.info("Getting product {} for tenant: {}", productId, tenantId);
@@ -172,18 +177,24 @@ public class ProductController {
             @RequestParam(required = false) Boolean inStock, // Not implemented yet - would require inventory service integration
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) UUID tenantId, // Optional tenant ID for public access
             Authentication authentication) {
         
-        // Extract tenant ID from JWT if authenticated
-        UUID tenantId = authentication != null ? getTenantIdFromAuthentication(authentication) : null;
+        // Extract tenant ID: priority: query param > JWT > default
+        if (tenantId == null && authentication != null) {
+            tenantId = getTenantIdFromAuthentication(authentication);
+        }
         
-        // For public access without authentication, tenantId should be provided via query param or header
-        // For now, we'll require tenantId - can be enhanced later
+        // For public access without authentication, use default tenant if configured
+        // Otherwise, require tenantId as query parameter
         if (tenantId == null) {
-            throw new BusinessException(
-                ErrorCode.UNAUTHORIZED,
-                "Tenant ID is required"
-            );
+            tenantId = getDefaultTenantId();
+            if (tenantId == null) {
+                throw new BusinessException(
+                    ErrorCode.BAD_REQUEST,
+                    "Tenant ID is required. Please provide 'tenantId' as a query parameter or authenticate."
+                );
+            }
         }
         
         log.info("Searching products for tenant: {}, query: {}, page: {}, size: {}", tenantId, query, page, size);
@@ -331,6 +342,18 @@ public class ProductController {
                 "Invalid tenant ID format"
             );
         }
+    }
+
+    /**
+     * Get default tenant ID for public browsing
+     * 
+     * <p>For public access without authentication, we use the default marketplace tenant.
+     * This is the same tenant ID used for customers in the Identity service.
+     */
+    private UUID getDefaultTenantId() {
+        // Default marketplace tenant ID (same as in Identity service)
+        // This is the tenant where all customers belong by default
+        return UUID.fromString("00000000-0000-0000-0000-000000000000");
     }
 
     /**

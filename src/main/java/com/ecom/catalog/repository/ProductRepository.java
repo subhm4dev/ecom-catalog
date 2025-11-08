@@ -68,14 +68,23 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
      * @param pageable Pagination
      * @return Page of products
      */
-    @Query("SELECT p FROM Product p WHERE " +
-           "p.tenantId = :tenantId AND " +
+    @Query(value = "SELECT p.* FROM products p WHERE " +
+           "p.tenant_id = :tenantId AND " +
            "p.deleted = false AND " +
-           "(:categoryId IS NULL OR p.categoryId = :categoryId) AND " +
+           "(:categoryId IS NULL OR p.category_id = :categoryId) AND " +
            "(:minPrice IS NULL OR p.price >= :minPrice) AND " +
            "(:maxPrice IS NULL OR p.price <= :maxPrice) AND " +
-           "(:query IS NULL OR LOWER(p.name) LIKE LOWER(CONCAT('%', :query, '%')) OR " +
-           "LOWER(p.description) LIKE LOWER(CONCAT('%', :query, '%')))")
+           "(:query IS NULL OR LOWER(CAST(p.name AS TEXT)) LIKE LOWER(CONCAT('%', :query, '%')) OR " +
+           "(p.description IS NOT NULL AND LOWER(CAST(p.description AS TEXT)) LIKE LOWER(CONCAT('%', :query, '%'))))",
+           nativeQuery = true,
+           countQuery = "SELECT COUNT(*) FROM products p WHERE " +
+           "p.tenant_id = :tenantId AND " +
+           "p.deleted = false AND " +
+           "(:categoryId IS NULL OR p.category_id = :categoryId) AND " +
+           "(:minPrice IS NULL OR p.price >= :minPrice) AND " +
+           "(:maxPrice IS NULL OR p.price <= :maxPrice) AND " +
+           "(:query IS NULL OR LOWER(CAST(p.name AS TEXT)) LIKE LOWER(CONCAT('%', :query, '%')) OR " +
+           "(p.description IS NOT NULL AND LOWER(CAST(p.description AS TEXT)) LIKE LOWER(CONCAT('%', :query, '%'))))")
     Page<Product> searchProducts(
         @Param("tenantId") UUID tenantId,
         @Param("categoryId") UUID categoryId,

@@ -3,6 +3,7 @@ package com.ecom.catalog.config;
 import com.ecom.catalog.security.JwtAuthenticationFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -60,14 +61,19 @@ public class SecurityConfig {
             // Configure endpoint access
             .authorizeHttpRequests(auth -> auth
                 // Public endpoints (no authentication required)
+                // Only 3 catalog endpoints are public for browsing:
+                // 1. GET /api/v1/category - Get all categories
+                // 2. GET /api/v1/product/search - Search/get all products
+                // 3. GET /api/v1/product/{id} - Get product by ID
                 .requestMatchers(
                     "/actuator/health",
                     "/actuator/info",
                     "/swagger-ui/**",
-                    "/v3/api-docs/**",
-                    "/api/v1/product/{id}",
-                    "/api/v1/product/search"
+                    "/v3/api-docs/**"
                 ).permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/v1/product/{id}").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/v1/product/search").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/v1/category").permitAll()
                 
                 // All other endpoints require authentication (validated by JwtAuthenticationFilter)
                 .anyRequest().authenticated()
